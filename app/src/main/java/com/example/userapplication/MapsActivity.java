@@ -16,6 +16,8 @@ import android.widget.Toast;
 
 import com.firebase.geofire.GeoFire;
 import com.firebase.geofire.GeoLocation;
+import com.firebase.geofire.GeoQuery;
+import com.firebase.geofire.GeoQueryEventListener;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.location.LocationRequest;
@@ -42,6 +44,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     DatabaseReference myRef;
     LatLng genLatLng;
     String userIdentifyer = "";
+    String ambulanceIdentifyer = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -70,6 +73,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         mMap.addMarker(new MarkerOptions().position(genLatLng).title("Emergency Here!!!"));
                     }
                 });
+                getNearestAmbulance();
+                callAmbulance.setText("Finding Ambulance...");
             }
         });
 
@@ -201,6 +206,59 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
 
     // CREATED FUNCTIONS
+
+
+    // function to find nearest ambulance
+    private int rad = 1;
+    private Boolean getAHit = false;
+    private void getNearestAmbulance(){
+        //Lat 15.316446 Lng 119.991545
+        DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference().child("AvailableAmbulance");
+
+        final LatLng sample = new LatLng(15.316446, 119.991545);
+
+        GeoFire geoFire = new GeoFire(dbRef);
+        GeoQuery geoQuery = geoFire.queryAtLocation(new GeoLocation(mLastLocation.getLatitude(), mLastLocation.getLongitude()), rad);
+        geoQuery.removeAllListeners();
+        geoQuery.addGeoQueryEventListener(new GeoQueryEventListener() {
+            @Override
+            public void onKeyEntered(String key, GeoLocation location) {
+                // if it gets a hit this method will call
+                if (!getAHit){
+                    ambulanceIdentifyer = key;
+                    getAHit = true;
+                    Toast.makeText(MapsActivity.this, ambulanceIdentifyer, Toast.LENGTH_SHORT).show();
+                    mMap.addMarker(new MarkerOptions().position(sample));
+                    callAmbulance.setText("Ambulance Found!!!");
+                }
+
+            }
+
+            @Override
+            public void onKeyExited(String key) {
+
+            }
+
+            @Override
+            public void onKeyMoved(String key, GeoLocation location) {
+
+            }
+
+            @Override
+            public void onGeoQueryReady() {
+                if (!getAHit){
+                    rad++;
+                    getNearestAmbulance();
+                }
+            }
+
+            @Override
+            public void onGeoQueryError(DatabaseError error) {
+
+            }
+        });
+
+    }
 
     private void disableLocation(){
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
