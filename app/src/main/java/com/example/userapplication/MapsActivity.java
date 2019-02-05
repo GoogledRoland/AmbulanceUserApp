@@ -10,6 +10,7 @@ import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
@@ -18,6 +19,7 @@ import com.firebase.geofire.GeoFire;
 import com.firebase.geofire.GeoLocation;
 import com.firebase.geofire.GeoQuery;
 import com.firebase.geofire.GeoQueryEventListener;
+import com.firebase.geofire.LocationCallback;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.location.LocationRequest;
@@ -28,10 +30,16 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+
+import java.util.HashMap;
+import java.util.List;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, com.google.android.gms.location.LocationListener {
 
@@ -43,8 +51,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     FirebaseDatabase firebaseDatabase;
     DatabaseReference myRef;
     LatLng genLatLng;
+    LatLng ambulanceLatLng;
     String userIdentifyer = "";
     String ambulanceIdentifyer = "";
+    Marker emergencyMarker;
+    Marker ambulanceMarker;
+
+
+    private static final String TAG = "MapsActivity";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,6 +69,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mapFragment.getMapAsync(this);
 
         callAmbulance = findViewById(R.id.bCallAmbulance);
+
 
         userIdentifyer = "YeaItsMe";
         firebaseDatabase = FirebaseDatabase.getInstance();
@@ -70,13 +85,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 geoFire.setLocation(userIdentifyer, new GeoLocation(mLastLocation.getLatitude(), mLastLocation.getLongitude()), new GeoFire.CompletionListener() {
                     @Override
                     public void onComplete(String key, DatabaseError error) {
-                        mMap.addMarker(new MarkerOptions().position(genLatLng).title("Emergency Here!!!"));
                     }
                 });
                 getNearestAmbulance();
                 callAmbulance.setText("Finding Ambulance...");
             }
         });
+
 
     }
 
@@ -94,10 +109,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
 
-        // Add a marker in Sydney and move the camera
-//        LatLng sydney = new LatLng(-34, 151);
-//        mMap.addMarker(new MarkerOptions().position(sydney).title("Marker in Sydney"));
-//        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney));
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             // TODO: Consider calling
@@ -116,11 +127,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     @Override
     public void onLocationChanged(Location location) {
+
         // function called every second
         mLastLocation = location;
         genLatLng = new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude());
         mMap.moveCamera(CameraUpdateFactory.newLatLng(genLatLng));
         mMap.animateCamera(CameraUpdateFactory.zoomTo(14));
+        if (emergencyMarker != null) {
+            emergencyMarker.remove();
+        }
+        emergencyMarker = mMap.addMarker(new MarkerOptions().position(genLatLng).title("Emergency Here"));
 
         GeoFire geoFire = new GeoFire(myRef);
         geoFire.setLocation(userIdentifyer, new GeoLocation(mLastLocation.getLatitude(), mLastLocation.getLongitude()), new GeoFire.CompletionListener() {
@@ -132,20 +148,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     }
 
-//    @Override
-//    public void onStatusChanged(String provider, int status, Bundle extras) {
-//
-//    }
-//
-//    @Override
-//    public void onProviderEnabled(String provider) {
-//
-//    }
-//
-//    @Override
-//    public void onProviderDisabled(String provider) {
-//
-//    }
 
     @Override
     public void onConnected(@Nullable Bundle bundle) {
@@ -184,52 +186,57 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     }
 
+
+    // Close the Location Services when the MapsActivity Was closed
     @Override
-    protected void onStop() {
-        super.onStop();
+    protected void onDestroy() {
+        super.onDestroy();
         myRef.child(userIdentifyer).removeValue();
-//        geoFire.removeLocation(userIdentifyer, new GeoFire.CompletionListener() {
-//            @Override
-//            public void onComplete(String key, DatabaseError error) {
-//                Toast.makeText(MapsActivity.this, "user Removed", Toast.LENGTH_SHORT).show();
-//
-//
-//
-//
-//
-//            }
-//        });
         disableLocation();
         mGoogleApiClient.disconnect();
     }
 
 
-
     // CREATED FUNCTIONS
 
 
-    // function to find nearest ambulance
     private int rad = 1;
     private Boolean getAHit = false;
-    private void getNearestAmbulance(){
-        //Lat 15.316446 Lng 119.991545
-        DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference().child("AvailableAmbulance");
+    // Recursive Function that will find the nearest ambulance
+    private void getNearestAmbulance() {
 
-        final LatLng sample = new LatLng(15.316446, 119.991545);
+        // database reference that points to Available Ambulance
+        final DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference().child("AvailableAmbulance");
+        final GeoFire geoFire = new GeoFire(dbRef);
 
-        GeoFire geoFire = new GeoFire(dbRef);
+        // Geofire Feature for finding the nearest location using GeoQuery
         GeoQuery geoQuery = geoFire.queryAtLocation(new GeoLocation(mLastLocation.getLatitude(), mLastLocation.getLongitude()), rad);
         geoQuery.removeAllListeners();
         geoQuery.addGeoQueryEventListener(new GeoQueryEventListener() {
+
+            // if it gets a hit this callback will be called
             @Override
             public void onKeyEntered(String key, GeoLocation location) {
-                // if it gets a hit this method will call
-                if (!getAHit){
+                // if statement in order to get stop recursively  getting ambulance in that radius
+                if (!getAHit) {
+
+                    // getting the ambulance identifyer
                     ambulanceIdentifyer = key;
+
+                    // stopping the loop by this
                     getAHit = true;
-                    Toast.makeText(MapsActivity.this, ambulanceIdentifyer, Toast.LENGTH_SHORT).show();
-                    mMap.addMarker(new MarkerOptions().position(sample));
+
+                    // setting button text to this
                     callAmbulance.setText("Ambulance Found!!!");
+
+                    // adding a child(ambulanceIdentifyer) to database reference
+                    dbRef.child(ambulanceIdentifyer);
+
+                                                                                // using another Geofire to get the ambulance location
+                    GeoFire getGeoFireLoc = new GeoFire(dbRef);                 // with the updated database reference
+                    getAmbulanceLocation(getGeoFireLoc, ambulanceIdentifyer);   // function that gets ambulance location
+
+                    dbRef.child(ambulanceIdentifyer).removeValue();             // remove the ambulance from being Available
                 }
 
             }
@@ -244,9 +251,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
             }
 
+            // recursive function kapag hindi pa nakakahanap.
             @Override
             public void onGeoQueryReady() {
-                if (!getAHit){
+                if (!getAHit) {
                     rad++;
                     getNearestAmbulance();
                 }
@@ -260,7 +268,43 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     }
 
-    private void disableLocation(){
+    private void getAmbulanceLocation(GeoFire geoFire, String key) {
+
+        // i dont know if this callback is realtime di ko pa na tetest kasi iisa lang device na gamit ko.
+        geoFire.getLocation(key, new LocationCallback() {
+            @Override
+            public void onLocationResult(String key, GeoLocation location) {
+                Log.d(TAG, String.valueOf(location.latitude) + String.valueOf(location.longitude));
+
+                ambulanceLatLng = new LatLng(location.latitude, location.longitude);    // getting LatLng from this Callback
+
+                // adding a moving marker
+                if (ambulanceMarker != null) {
+                    ambulanceMarker.remove();
+                }
+                ambulanceMarker = mMap.addMarker(new MarkerOptions().position(ambulanceLatLng).title("Ambulance"));
+
+                // putting the status of the ambulance to Flagged together with Request Identifyer
+                final DatabaseReference putOnFlagged = FirebaseDatabase.getInstance().getReference().child("FlaggedAmbulance");
+                GeoFire geoFireFlagged = new GeoFire(putOnFlagged);
+                geoFireFlagged.setLocation(ambulanceIdentifyer, location, new GeoFire.CompletionListener() {
+                    @Override
+                    public void onComplete(String key, DatabaseError error) {
+                        putOnFlagged.child(ambulanceIdentifyer).child("EmergencyIdentifyer").setValue(userIdentifyer);
+                    }
+                });
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+
+            }
+        });
+    }
+
+
+    // disabling location services of exited the MapsActivity
+    private void disableLocation() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             // TODO: Consider calling
             //    ActivityCompat#requestPermissions
@@ -274,6 +318,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mMap.setMyLocationEnabled(false);
     }
 
+    // building googleMap Api
     protected synchronized void buildGoogleApiClient() {
         mGoogleApiClient = new GoogleApiClient.Builder(this).addConnectionCallbacks(this).addOnConnectionFailedListener(this).addApi(LocationServices.API).build();
         mGoogleApiClient.connect();
