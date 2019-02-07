@@ -219,24 +219,33 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             public void onKeyEntered(String key, GeoLocation location) {
                 // if statement in order to get stop recursively  getting ambulance in that radius
                 if (!getAHit) {
-
                     // getting the ambulance identifyer
                     ambulanceIdentifyer = key;
+                    dbRef.child(ambulanceIdentifyer).child("Availability").addValueEventListener(new ValueEventListener() {
+                        @Override
+                        public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                            String tmp = String.valueOf(dataSnapshot.getValue());
+                            Boolean isItAvailable = Boolean.valueOf(tmp);
+                            if (isItAvailable){
+                                dbRef.child(ambulanceIdentifyer).child("Availability").setValue(false);
+                                GeoFire geoFire1 = new GeoFire(dbRef.child(ambulanceIdentifyer).child("EmergencyInfo"));
+                                geoFire1.setLocation(userIdentifyer, new GeoLocation(mLastLocation.getLatitude(), mLastLocation.getLongitude()), new GeoFire.CompletionListener() {
+                                    @Override
+                                    public void onComplete(String key, DatabaseError error) {
 
-                    // stopping the loop by this
-                    getAHit = true;
+                                    }
+                                });
+                                getAHit = true;
+                                getAmbulanceLocation(ambulanceIdentifyer);
+                                callAmbulance.setText("Ambulance Found!!!");
+                            }
+                        }
 
-                    // setting button text to this
-                    callAmbulance.setText("Ambulance Found!!!");
+                        @Override
+                        public void onCancelled(@NonNull DatabaseError databaseError) {
 
-                    // adding a child(ambulanceIdentifyer) to database reference
-                    dbRef.child(ambulanceIdentifyer);
-
-                                                                                // using another Geofire to get the ambulance location
-                    GeoFire getGeoFireLoc = new GeoFire(dbRef);                 // with the updated database reference
-                    getAmbulanceLocation(getGeoFireLoc, ambulanceIdentifyer);   // function that gets ambulance location
-
-                    dbRef.child(ambulanceIdentifyer).removeValue();             // remove the ambulance from being Available
+                        }
+                    });
                 }
 
             }
@@ -268,38 +277,30 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     }
 
-    private void getAmbulanceLocation(GeoFire geoFire, String key) {
-
-        // i dont know if this callback is realtime di ko pa na tetest kasi iisa lang device na gamit ko.
-        geoFire.getLocation(key, new LocationCallback() {
+    private void getAmbulanceLocation(final String key) {
+        // firebase callback
+        DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference().child("AvailableAmbulance").child(key).child("l");
+        dbRef.addValueEventListener(new ValueEventListener() {
             @Override
-            public void onLocationResult(String key, GeoLocation location) {
-                Log.d(TAG, String.valueOf(location.latitude) + String.valueOf(location.longitude));
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                double Lat = 0; double Lng = 0;
+                Lat = Double.parseDouble(dataSnapshot.child("0").getValue().toString());
+                Lng = Double.parseDouble(dataSnapshot.child("1").getValue().toString());
 
-                ambulanceLatLng = new LatLng(location.latitude, location.longitude);    // getting LatLng from this Callback
-
-                // adding a moving marker
+                ambulanceLatLng = new LatLng(Lat, Lng);
                 if (ambulanceMarker != null) {
                     ambulanceMarker.remove();
                 }
-                ambulanceMarker = mMap.addMarker(new MarkerOptions().position(ambulanceLatLng).title("Ambulance"));
-
-                // putting the status of the ambulance to Flagged together with Request Identifyer
-                final DatabaseReference putOnFlagged = FirebaseDatabase.getInstance().getReference().child("FlaggedAmbulance");
-                GeoFire geoFireFlagged = new GeoFire(putOnFlagged);
-                geoFireFlagged.setLocation(ambulanceIdentifyer, location, new GeoFire.CompletionListener() {
-                    @Override
-                    public void onComplete(String key, DatabaseError error) {
-                        putOnFlagged.child(ambulanceIdentifyer).child("EmergencyIdentifyer").setValue(userIdentifyer);
-                    }
-                });
+                ambulanceMarker = mMap.addMarker(new MarkerOptions().position(ambulanceLatLng).title(key));
             }
 
             @Override
-            public void onCancelled(DatabaseError databaseError) {
+            public void onCancelled(@NonNull DatabaseError databaseError) {
 
             }
         });
+
+
     }
 
 
