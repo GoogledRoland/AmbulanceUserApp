@@ -68,6 +68,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
+
+
         callAmbulance = findViewById(R.id.bCallAmbulance);
 
 
@@ -87,8 +89,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     public void onComplete(String key, DatabaseError error) {
                     }
                 });
+
                 getNearestAmbulance();
-                callAmbulance.setText("Finding Ambulance...");
+
             }
         });
 
@@ -202,11 +205,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private int rad = 1;
     private Boolean getAHit = false;
+
     // Recursive Function that will find the nearest ambulance
     private void getNearestAmbulance() {
-
+        callAmbulance.setText("Finding Ambulance...");
+        callAmbulance.setClickable(false);
         // database reference that points to Available Ambulance
         final DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference().child("AvailableAmbulance");
+
         final GeoFire geoFire = new GeoFire(dbRef);
 
         // Geofire Feature for finding the nearest location using GeoQuery
@@ -220,32 +226,46 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 // if statement in order to get stop recursively  getting ambulance in that radius
                 if (!getAHit) {
                     // getting the ambulance identifyer
+                    getAHit = true;
                     ambulanceIdentifyer = key;
-                    dbRef.child(ambulanceIdentifyer).child("Availability").addValueEventListener(new ValueEventListener() {
-                        @Override
-                        public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                            String tmp = String.valueOf(dataSnapshot.getValue());
-                            Boolean isItAvailable = Boolean.valueOf(tmp);
-                            if (isItAvailable){
-                                dbRef.child(ambulanceIdentifyer).child("Availability").setValue(false);
-                                GeoFire geoFire1 = new GeoFire(dbRef.child(ambulanceIdentifyer).child("EmergencyInfo"));
-                                geoFire1.setLocation(userIdentifyer, new GeoLocation(mLastLocation.getLatitude(), mLastLocation.getLongitude()), new GeoFire.CompletionListener() {
-                                    @Override
-                                    public void onComplete(String key, DatabaseError error) {
 
-                                    }
-                                });
-                                getAHit = true;
-                                getAmbulanceLocation(ambulanceIdentifyer);
-                                callAmbulance.setText("Ambulance Found!!!");
-                            }
-                        }
+                    final DatabaseReference ambulanceLocationRef = FirebaseDatabase.getInstance().getReference().child("AmbulanceInfo").child(ambulanceIdentifyer);
+                    HashMap hashMap = new HashMap();
+                    hashMap.put("EmergencyId", userIdentifyer);
+                    ambulanceLocationRef.updateChildren(hashMap);
+                    getDriverLocation(ambulanceIdentifyer);
 
-                        @Override
-                        public void onCancelled(@NonNull DatabaseError databaseError) {
 
-                        }
-                    });
+
+
+                    // i need extra device to test this
+
+//                    dbRef.child(ambulanceIdentifyer).child("Availability").addValueEventListener(new ValueEventListener() {
+//                        @Override
+//                        public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+//                            String tmp = String.valueOf(dataSnapshot.getValue());
+//                            Boolean isItAvailable = Boolean.valueOf(tmp);
+//                            Log.d("shitty", ambulanceIdentifyer + " " + isItAvailable);
+//                            if (isItAvailable){
+//                                dbRef.child(ambulanceIdentifyer).child("Availability").setValue(false);
+//                                GeoFire geoFire1 = new GeoFire(dbRef.child(ambulanceIdentifyer).child("EmergencyInfo"));
+//                                geoFire1.setLocation(userIdentifyer, new GeoLocation(mLastLocation.getLatitude(), mLastLocation.getLongitude()), new GeoFire.CompletionListener() {
+//                                    @Override
+//                                    public void onComplete(String key, DatabaseError error) {
+//
+//                                    }
+//                                });
+//                                getAHit = true;
+////                                getAmbulanceLocation(ambulanceIdentifyer);
+//                                callAmbulance.setText("Ambulance Found!!!");
+//                            }
+//                        }
+//
+//                        @Override
+//                        public void onCancelled(@NonNull DatabaseError databaseError) {
+//
+//                        }
+//                    })
                 }
 
             }
@@ -275,17 +295,45 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             }
         });
 
+
+    }
+
+    private void getDriverLocation(String key){
+        DatabaseReference driverLocRef = FirebaseDatabase.getInstance().getReference().child("WorkingAmbulance").child(key).child("l");
+        driverLocRef.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                double Lat = 0 ; double Lng = 0;
+                Lat = Double.parseDouble(dataSnapshot.child("0").getValue().toString());
+                Lng = Double.parseDouble(dataSnapshot.child("1").getValue().toString());
+                ambulanceLatLng = new LatLng(Lat,Lng);
+
+                if (ambulanceMarker != null){
+                    ambulanceMarker.remove();
+                }
+                ambulanceMarker = mMap.addMarker(new MarkerOptions().position(ambulanceLatLng).title(ambulanceIdentifyer));
+            callAmbulance.setText("Ambulance Found!!!");
+            }
+
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+
+            }
+        });
+
     }
 
     private void getAmbulanceLocation(final String key) {
         // firebase callback
-        DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference().child("AvailableAmbulance").child(key).child("l");
+        DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference().child("AvailableAmbulance").child(key).child("location").child("l");
         dbRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 double Lat = 0; double Lng = 0;
                 Lat = Double.parseDouble(dataSnapshot.child("0").getValue().toString());
                 Lng = Double.parseDouble(dataSnapshot.child("1").getValue().toString());
+                Log.d("sht", "Lat = " + Lat + " | Lng = " +Lng);
 
                 ambulanceLatLng = new LatLng(Lat, Lng);
                 if (ambulanceMarker != null) {
@@ -300,8 +348,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             }
         });
 
-
     }
+
 
 
     // disabling location services of exited the MapsActivity
