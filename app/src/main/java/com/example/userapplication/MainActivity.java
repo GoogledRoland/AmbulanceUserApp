@@ -46,33 +46,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
 
-        toOfflineData.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference("DummyData");
-                final DatabaseReference setRef = FirebaseDatabase.getInstance().getReference().child("AvailableAmbulance");
-                GeoFire getGeofire = new GeoFire(dbRef);
-                getGeofire.getLocation("Ambulance001", new LocationCallback() {
-                    @Override
-                    public void onLocationResult(String key, GeoLocation location) {
-                        sampleTransfer = new LatLng(location.latitude, location.longitude);
-                        Log.d("tag", String.valueOf(sampleTransfer));
-                        GeoFire geoFire = new GeoFire(setRef);
-                        geoFire.setLocation("Ambulance001", new GeoLocation(sampleTransfer.latitude, sampleTransfer.longitude), new GeoFire.CompletionListener() {
-                            @Override
-                            public void onComplete(String key, DatabaseError error) {
-                                setRef.child("Ambulance001").child("Availability").setValue(true);
-                            }
-                        });
-                    }
 
-                    @Override
-                    public void onCancelled(DatabaseError databaseError) {
-
-                    }
-                });
-            }
-        });
 
 
     }
