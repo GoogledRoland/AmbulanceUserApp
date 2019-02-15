@@ -21,6 +21,7 @@
        android:id="@+id/bCallAmbulance"
        android:text="Call Ambulance"
        android:layout_gravity="bottom"
+       android:visibility="invisible"
        android:layout_width="match_parent"
        android:layout_height="wrap_content" />
 
