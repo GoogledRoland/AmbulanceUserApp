@@ -36,6 +36,8 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptor;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
@@ -45,6 +47,7 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.jar.Pack200;
@@ -138,18 +141,21 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "SDK greater than 23", Toast.LENGTH_SHORT).show();
                 mFusedLocationProviderClient.requestLocationUpdates(mLocationRequest, mLocationCallback, Looper.myLooper());
                 mMap.setMyLocationEnabled(true);
                 callAmbulance.setVisibility(View.VISIBLE);
+                Toast.makeText(this, "already has permission", Toast.LENGTH_SHORT).show();
             } else {
+                Toast.makeText(this, "does not have permission", Toast.LENGTH_SHORT).show();
                 checkLocationPermission();
             }
         }else{
+            Toast.makeText(this, "SDK build Less Than 23", Toast.LENGTH_SHORT).show();
             mFusedLocationProviderClient.requestLocationUpdates(mLocationRequest, mLocationCallback, Looper.myLooper());
             mMap.setMyLocationEnabled(true);
             callAmbulance.setVisibility(View.VISIBLE);
         }
-
 
 //        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
 //            ActivityCompat.requestPermissions(MapsActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_REQUEST_CODE);
@@ -164,13 +170,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             for (Location location : locationResult.getLocations()) {
 //                 function called every second
                 mLastLocation = location;
+                Log.i(TAG, "onLocationResult: " + mLastLocation);
                 genLatLng = new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude());
                 mMap.moveCamera(CameraUpdateFactory.newLatLng(genLatLng));
                 mMap.animateCamera(CameraUpdateFactory.zoomTo(14));
                 if (emergencyMarker != null) {
                     emergencyMarker.remove();
                 }
-                emergencyMarker = mMap.addMarker(new MarkerOptions().position(genLatLng).title("Emergency Here"));
+                emergencyMarker = mMap.addMarker(new MarkerOptions().position(genLatLng).title("Emergency Here").icon(BitmapDescriptorFactory.fromResource(R.mipmap.ic_emergencymarker)));
 
                 GeoFire geoFire = new GeoFire(myRef);
                 geoFire.setLocation(userIdentifyer, new GeoLocation(mLastLocation.getLatitude(), mLastLocation.getLongitude()), new GeoFire.CompletionListener() {
@@ -207,6 +214,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        Log.d(TAG, "onRequestPermissionsResult: "+ requestCode + " | " + Arrays.toString(grantResults) + " | " + Arrays.toString(permissions));
         switch (requestCode) {
             case 1: {
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
@@ -329,6 +337,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     hashMap.put("EmergencyId", userIdentifyer);
                     ambulanceLocationRef.updateChildren(hashMap);
                     getDriverLocation(ambulanceIdentifyer);
+                    callAmbulance.setText("Ambulance Found!!!");
+                    callAmbulance.setClickable(false);
 
 
                     // i need extra device to test this
@@ -398,15 +408,34 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 double Lat = 0;
                 double Lng = 0;
-                Lat = Double.parseDouble(dataSnapshot.child("0").getValue().toString());
-                Lng = Double.parseDouble(dataSnapshot.child("1").getValue().toString());
-                ambulanceLatLng = new LatLng(Lat, Lng);
+                if (dataSnapshot.exists()){
+                    Lat = Double.parseDouble(dataSnapshot.child("0").getValue().toString());
+                    Lng = Double.parseDouble(dataSnapshot.child("1").getValue().toString());
+                    ambulanceLatLng = new LatLng(Lat, Lng);
 
-                if (ambulanceMarker != null) {
-                    ambulanceMarker.remove();
+                    Location loc1 = new Location("");
+                    loc1.setLatitude(genLatLng.latitude);
+                    loc1.setLongitude(genLatLng.longitude);
+                    Location loc2 = new Location("");
+                    loc2.setLatitude(Lat);
+                    loc2.setLongitude(Lng);
+
+                    float distance = loc1.distanceTo(loc2);
+                    if (distance < 10){
+                        callAmbulance.setText("Ambulance Arrived");
+
+                    }
+                    if (ambulanceMarker != null) {
+                        ambulanceMarker.remove();
+                    }
+                    ambulanceMarker = mMap.addMarker(new MarkerOptions().position(ambulanceLatLng).title(ambulanceIdentifyer).icon(BitmapDescriptorFactory.fromResource(R.mipmap.ic_ambulancemarker)));
+
+                }else{
+                    if (ambulanceMarker != null) {
+                        ambulanceMarker.remove();
+                    }
                 }
-                ambulanceMarker = mMap.addMarker(new MarkerOptions().position(ambulanceLatLng).title(ambulanceIdentifyer));
-                callAmbulance.setText("Ambulance Found!!!");
+
             }
 
 
