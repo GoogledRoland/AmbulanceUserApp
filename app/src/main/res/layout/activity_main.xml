@@ -15,11 +15,11 @@
         android:text="Find the Nearest Ambulance"
         />
     <Button
-        android:id="@+id/bToOfflineData"
+        android:id="@+id/bRequestAmbulanceOffline"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_centerHorizontal="true"
-        android:text="Ambulance Informations(Offline)"
+        android:text="Request Ambulance Offline via SMS"
         android:layout_below="@+id/bToMap"/>
 
 
